@@ -1,0 +1,166 @@
+<?php
+
+/**
+ * The admin controller
+ *
+ * @license    http://opensource.org/licenses/MIT The MIT License (MIT)
+ * @author     Omar El Gabry <omar.elgabry.93@gmail.com>
+ *
+ */
+
+class GiaovienController extends Controller {
+
+    /**
+     * A method that will be triggered before calling action method.
+     * Any changes here will reflect then on Controller::triggerComponents() method
+     *
+     */
+    public function beforeAction(){
+
+        parent::beforeAction();
+
+		$action = $this->request->param('action');
+        $actions = ['getGiaovien', 'createGiaovien', 'updateGiaovien', 'deleteGiaovien'];
+
+        // define the action methods that needs to be triggered only through POST & Ajax request.
+        $this->Security->requireAjax($actions);
+        $this->Security->requirePost($actions);
+
+        // You need to explicitly define the form fields that you expect to be returned in POST request,
+        // if form field wasn't defined, this will detected as form tampering attempt.
+        switch($action){
+            case "getGiaovien":
+                $this->Security->config("form", [ 'fields' => ['name', 'ngaysinh', 'diachi', 'page']]);
+                break;
+			case "createGiaovien":
+                $this->Security->config("form", [ 'fields' => ['name', 'ngaysinh', 'diachi']]);
+                break;
+			 case "updateGiaovien":
+                $this->Security->config("form", [ 'fields' => ['user_id', 'name', 'ngaysinh', 'diachi']]);
+                break;
+            case "deleteGiaovien":
+                $this->Security->config("form", [ 'fields' => ['giaovien_id']]);
+                break;
+        }
+    }
+
+    /**
+     * show all users
+     *
+     */
+    public function index(){
+
+        Config::setJsConfig('curPage', "giaovien");
+        $this->view->renderWithLayouts(Config::get('VIEWS_PATH') . "layout/default/", Config::get('VIEWS_PATH') . 'giaovien/index.php');
+    }
+
+    /**
+     * get users by name, email & role
+     *
+     */
+    public function getGiaovien(){
+
+        $name     = $this->request->data("name");
+		$ngaySinh  = $this->request->data("ngaysinh");
+		$diaChi    = $this->request->data("diachi");
+        $pageNum  = $this->request->data("page");
+        $usersData = $this->giaovien->getGiaovien($name, $ngaySinh, $diaChi, $pageNum);
+
+        if(!$usersData){
+            $this->view->renderErrors($this->giaovien->errors());
+        } else{
+
+            $usersHTML       = $this->view->render(Config::get('VIEWS_PATH') . 'giaovien/giaovien.php', array("giaovien" => $usersData["giaovien"]));
+            $paginationHTML  = $this->view->render(Config::get('VIEWS_PATH') . 'pagination/default.php', array("pagination" => $usersData["pagination"]));
+            $this->view->renderJson(array("data" => ["giaovien" => $usersHTML, "pagination" => $paginationHTML]));
+        }
+    }
+
+    /**
+     * view a user
+     *
+     * @param integer|string $userId
+     */
+   
+    /**
+     * delete a user
+     *
+     */
+    public function deleteGiaovien(){
+
+        $userId = Encryption::decryptIdWithDash($this->request->data("giaovien_id"));
+       
+
+        $this->giaovien->deleteGiaovien($userId);
+        $this->view->renderJson(array("success" => true));
+    }
+
+    public function add(){
+
+		Config::setJsConfig('curPage', "giaovien");
+		$this->view->renderWithLayouts(Config::get('VIEWS_PATH') . "layout/default/", Config::get('VIEWS_PATH') . 'giaovien/create.php');
+	}
+
+    public function createGiaovien(){
+
+		$content  = $this->request->data("name");
+		$ngaySinh  = $this->request->data("ngaysinh");
+		$diaChi  = $this->request->data("diachi");
+		$sinhvien = $this->giaovien->createGiaovien($content, $ngaySinh, $diaChi);
+		$this->index();
+	}
+
+    /**
+     * view backups if exist
+     *
+     */
+    public function viewGiaovien($userId = 0){
+
+        $userId = Encryption::decryptId($userId);
+        Config::setJsConfig('curPage', "giaovien");
+        Config::setJsConfig('giaovienId', Encryption::encryptId($userId));
+
+        $this->view->renderWithLayouts(Config::get('VIEWS_PATH') . "layout/default/", Config::get('VIEWS_PATH') . 'giaovien/viewGiaovien.php', array("giaovienId" => $userId));
+    }
+
+    public function updateGiaovien(){
+
+        $sinhvienId     = Encryption::decryptId($this->request->data("user_id"));
+        $name       = $this->request->data("name");
+		$ngaySinh       = $this->request->data("ngaysinh");
+		$diaChi       = $this->request->data("diachi");
+        $result = $this->giaovien->updateGiaovien($sinhvienId, $name, $ngaySinh, $diaChi);
+
+        if(!$result){
+            $this->view->renderErrors($this->giaovien->errors());
+        }else{
+			$this->view->renderSuccess("Table Giao Vien has been updated.");
+        }
+    }
+
+    public function isAuthorized(){
+
+        $action = $this->request->param('action');
+        $role = Session::getUserRole();
+        $resource = "giaovien";
+
+        // only for admins
+        Permission::allow('admin', $resource, ['*']);
+
+        // only for normal users
+        Permission::allow('user', $resource, ['index']);
+
+        $todoId = $this->request->data("giaovien_id");
+
+        if(!empty($todoId)){
+            $todoId = Encryption::decryptIdWithDash($todoId);
+        }
+
+        $config = [
+            "table" => "giaovien",
+            "id" => $todoId];
+
+        return Permission::check($role, $resource, $action, $config);
+    }
+
+ }

@@ -1,0 +1,278 @@
+<?php
+
+ /**
+  * Admin Class
+  * Admin Class inherits from User.
+  *
+  * @license    http://opensource.org/licenses/MIT The MIT License (MIT)
+  * @author     Omar El Gabry <omar.elgabry.93@gmail.com>
+  */
+
+class Lop extends Model{
+
+    /**
+     * get all users in the database
+     *
+     * @access public
+     * @param  string  $name
+     * @param  string  $email
+     * @param  string  $role
+     * @param  integer $pageNum
+     * @return array
+     *
+     */
+    public function getLop($name = null, $giaoVien = null,$sinhVien = null, $pageNum = 1){
+        
+        $options = [
+            $name      => "lop.ten LIKE :name ",
+            $giaoVien     => "giaovien.ten LIKE :giaovien ",
+			$sinhVien     => "(select group_concat(sinhvien.ten) from sinhvien inner join lopvasinhvien on lopvasinhvien.idsinhvien = sinhvien.id									where lopvasinhvien.idlop=lop.id) LIKE :sinhvien "
+        ];
+
+        // get options query
+        $options = $this->applyOptions($options, "AND ");
+        $options = empty($options)? "": "WHERE " . $options;
+
+        $values = [];
+        if (!empty($name))  $values[":name"]  = "%". $name ."%";
+		if (!empty($giaoVien)) $values[":giaovien"] = "%". $giaoVien ."%";
+		if (!empty($sinhVien)) $values[":sinhvien"] = "%". $sinhVien ."%";
+        // get pagination object so that we can add offset and limit in our query
+        $pagination = Pagination::pagination("giaovien,lop,sinhvien", $options, $values, $pageNum);
+        $offset     = $pagination->getOffset();
+        $limit      = $pagination->perPage;
+
+        $database   = Database::openConnection();
+        $query   = "SELECT lop.id as id, lop.ten as ten, lop.giaovienchunhiem, giaovien.ten as ten1, (select group_concat(sinhvien.ten) from sinhvien inner join				lopvasinhvien on lopvasinhvien.idsinhvien = sinhvien.id where lopvasinhvien.idlop=lop.id) as ten2 
+					FROM lop left join giaovien on giaovien.id=lop.giaovienchunhiem ";
+        $query  .= $options;
+        $query  .= "LIMIT $limit OFFSET $offset";
+
+        $database->prepare($query);
+        $database->execute($values);
+        $giaovien = $database->fetchAllAssociative();
+
+        return array("giaovien" => $giaovien, "pagination" => $pagination);
+     }
+
+    public function createLop($content,$giaoVien){
+
+        $database = Database::openConnection();
+        $query    = "INSERT INTO lop (ten,giaovienchunhiem) VALUES (:ten,:giaovien)";
+        $database->prepare($query);
+        $database->bindValue(':ten', $content);
+		$database->bindValue(':giaovien', $giaoVien);
+        $database->execute();
+
+        if($database->countRows() !== 1){
+            throw new Exception("Couldn't create Giao vien");
+        }
+
+        return true;
+	}
+
+    public function getLopID($Id){
+
+		$database = Database::openConnection();
+        $database->getById("lop", $Id);
+
+        if($database->countRows() !== 1){
+            throw new Exception("Lop ID " .  $Id . " doesn't exists");
+        }
+
+        $id = $database->fetchAssociative();
+        $id["id"]    = (int)$id["id"];
+        return $id;
+	}
+
+    public function getSV(){
+
+		$database = Database::openConnection();
+        $query  = "SELECT ten,id ";
+        $query .= "FROM sinhvien ";
+        $database->prepare($query);
+        $database->execute();
+        $id = $database->fetchAllAssociative();
+        return $id;
+	}
+
+    public function deleteSV($Id){
+
+		$database = Database::openConnection();
+        $query  = "SELECT sinhvien.ten, lopvasinhvien.id, lopvasinhvien.idlop, sinhvien.id as id
+					FROM lopvasinhvien inner join sinhvien on sinhvien.id=lopvasinhvien.idsinhvien
+					where lopvasinhvien.idlop = :id ";
+        $database->prepare($query);
+		$database->bindValue(':id', $Id);
+        $database->execute();
+        $id = $database->fetchAllAssociative();
+        return $id;
+	}
+
+    public function getIDLop(){
+
+		$database = Database::openConnection();
+        $query  = "SELECT ten,id ";
+        $query .= "FROM giaovien ";
+        $database->prepare($query);
+        $database->execute();
+        $id = $database->fetchAllAssociative();
+        return $id;
+	}
+
+    public function updateLop($sinhvienId,$name,$giaoVien){
+
+        $validation = new Validation();
+        if(!$validation->validate([
+             "ten" => [$name, "minLen(2)|maxLen(30)"]
+			])){
+             $this->errors = $validation->errors();
+             return false;
+         }
+
+         if($name){
+
+             $options = [
+                 $name     => "ten = :name ",
+                 $giaoVien => "giaovienchunhiem = :giaovien "
+             ];
+
+             $database = Database::openConnection();
+             $query   = "UPDATE lop SET ";
+             $query  .= $this->applyOptions($options, ", ");
+             $query  .= "WHERE id = :id LIMIT 1 ";
+             $database->prepare($query);
+
+             if($name) {
+                 $database->bindValue(':name', $name);
+             }
+			 if($giaoVien) {
+                 $database->bindValue(':giaovien', $giaoVien);
+             }
+             $database->bindValue(':id', $sinhvienId);
+             $result = $database->execute();
+             if(!$result){
+                 throw new Exception("Couldn't update giao vien");
+             }
+         }
+
+         return true;
+     }
+
+	public function showSV($lop){
+
+		$database = Database::openConnection();
+        $query  = "SELECT idsinhvien, idlop, id ";
+        $query .= "FROM lopvasinhvien where idlop = :idlop ";
+        $database->prepare($query);
+		$database->bindValue(':idlop', $lop);
+        $database->execute();
+        $id = $database->fetchAllAssociative();
+        return $id;
+	}
+
+    public function addSV($lop,$content){
+
+		$database = Database::openConnection();
+        $query    = "INSERT INTO lopvasinhvien (idlop, idsinhvien) VALUES (:lop,:ten) ";
+        $database->prepare($query);
+		$database->bindValue(':lop', $lop);
+        $database->bindValue(':ten', $content);
+        $database->execute();
+
+        if($database->countRows() !== 1){
+            throw new Exception("Couldn't create lop va sinh vien");
+        }
+
+        return true;
+	}
+
+    public function xoaSV($lop,$content){
+
+		$database = Database::openConnection();
+        $query    = "delete from lopvasinhvien where idlop = :lop and idsinhvien = :ten ";
+        $database->prepare($query);
+		$database->bindValue(':lop', $lop);
+        $database->bindValue(':ten', $content);
+        $database->execute();
+
+        if($database->countRows() !== 1){
+            throw new Exception("Couldn't create lop va sinh vien");
+        }
+
+        return true;
+	}
+    /**
+     *  Update info of a passed user id
+     *
+     * @access public
+     * @param  integer $userId
+     * @param  integer $adminId
+     * @param  string  $name
+     * @param  string  $password
+     * @param  string  $role
+     * @return bool
+     * @throws Exception If password couldn't be updated
+     *
+     */
+   
+    /**
+     * Delete a user.
+     *
+     * @param  string  $adminId
+     * @param  integer $userId
+     * @throws Exception
+     */
+    public function deleteLop($userId){
+
+        $database = Database::openConnection();
+        $database->deleteById("lop", $userId);
+
+        if ($database->countRows() !== 1) {
+            throw new Exception ("Couldn't delete user");
+        }
+    }
+
+     /**
+      * Counting the number of users in the database.
+      *
+      * @access public
+      * @static static  method
+      * @return integer number of users
+      *
+      */
+    public function countUsers(){
+
+         return $this->countAll("giaovien");
+     }
+    public function getUsersData(){
+
+        $database = Database::openConnection();
+
+        $database->prepare("SELECT lop.id as id, lop.ten as ten, lop.giaovienchunhiem, giaovien.ten as ten1, (select group_concat(sinhvien.ten) from sinhvien inner				join lopvasinhvien on lopvasinhvien.idsinhvien = sinhvien.id where lopvasinhvien.idlop=lop.id) as ten2 
+					FROM lop left join giaovien on giaovien.id=lop.giaovienchunhiem");
+        $database->execute();
+
+        $users = $database->fetchAllAssociative();
+        $cols  = array("Name", "Giáo Viên Chủ Nhiệm", "Sinh Viên");
+
+        return ["rows" => $users, "cols" => $cols, "filename" => "lop"];
+    }
+     /**
+      * Get the backup file from the backup directory in file system
+      *
+      * @access public
+      * @return array
+      */
+    
+    /**
+     * get users data.
+     * Use this method to download users info in database as csv file.
+     *
+     * @access public
+     * @return array
+     */
+   
+
+ }
+   
